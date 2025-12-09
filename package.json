@@ -1,0 +1,7 @@
+{
+  "name": "liangliang-server",
+  "version": "1.0.0",
+  "description": "Brain server for Liangliang Toy",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {

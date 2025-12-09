@@ -1,7 +1,17 @@
 {
   "name": "liangliang-server",
   "version": "1.0.0",
-  "description": "Brain server for Liangliang Toy",
-  "main": "server.js",
+  "description": "Smart Toy Server",
   "type": "module",
   "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.1.0",
+    "dotenv": "^16.4.5",
+    "ws": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

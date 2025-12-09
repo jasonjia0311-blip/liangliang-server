@@ -1,10 +1,10 @@
 /**
- * 亮亮 "大脑" 服务器 (Brain Server) v7.5 (心跳版)
+ * 亮亮 "大脑" 服务器 (Brain Server) v7.6 (极速模式)
  * 状态: 云端/本地通用版
- * 特性: 增加心跳日志证明服务器存活，增加显眼的连接提示
+ * 特性: 关闭字幕转写 (Transcription)，最大化响应速度
  */
 
-console.log("🚀 正在启动亮亮服务器 (v7.5)...");
+console.log("🚀 正在启动亮亮服务器 (v7.6 极速版)...");
 
 import { GoogleGenAI } from "@google/genai";
 import { WebSocketServer } from 'ws';
@@ -30,7 +30,7 @@ const server = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-// 心跳包日志 (防止用户以为卡死了)
+// 心跳包日志
 setInterval(() => {
   console.log('❤️ [心跳] 服务器运行中... (等待亮亮连接)');
 }, 30000);
@@ -65,37 +65,31 @@ wss.on('connection', async function connection(ws) {
         console.error("❌ 无法连接 Google: 缺少 API Key");
         return;
     }
-    console.log('⏳ 正在连接 Google Gemini...');
+    console.log('⏳ 正在连接 Google Gemini (极速模式)...');
     
     try {
       session = await ai.live.connect({
-        model: 'gemini-2.0-flash-exp', 
+        // 切换回 Native Audio 模型，这是低延迟专用的
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025', 
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
           systemInstruction: SYSTEM_INSTRUCTION,
-          inputAudioTranscription: {}, 
+          // ⚠️ 已关闭 inputAudioTranscription 以提升速度！
+          // inputAudioTranscription: {}, 
         },
         callbacks: {
           onopen: () => {
-             console.log('✅ Google AI 已连接!');
+             console.log('✅ Google AI 已连接! (Turbo Mode)');
              isReconnecting = false;
           },
           onmessage: (msg) => {
-            // 1. 处理音频回复
+            // 只处理音频，不处理文字
             const base64Audio = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
               const audioBuffer = Buffer.from(base64Audio, 'base64');
               console.log(`🤖 AI 回复音频: ${audioBuffer.length} bytes`);
               ws.send(audioBuffer);
-            }
-
-            // 2. 处理文字识别
-            if (msg.serverContent?.inputTranscription) {
-                const text = msg.serverContent.inputTranscription.text;
-                if (text && msg.serverContent.turnComplete) {
-                    console.log(`🗣️ 用户说: "${text}"`);
-                }
             }
           },
           onerror: (err) => {
@@ -120,6 +114,18 @@ wss.on('connection', async function connection(ws) {
   ws.on('message', (data) => {
     if (session && !isReconnecting) {
       try {
+        // 计算音量 (粗略)
+        let sum = 0;
+        for (let i = 0; i < data.length; i+=2) {
+           sum += Math.abs(data.readInt16LE(i));
+        }
+        const avg = sum / (data.length / 2);
+        
+        // 只有当音量足够大时才打印，防止日志刷屏
+        if (avg > 100) {
+            console.log(`🎤 收到声音 (音量: ${avg})`);
+        }
+        
         session.sendRealtimeInput({
             media: { mimeType: 'audio/pcm;rate=16000', data: data.toString('base64') }
         });
@@ -131,5 +137,5 @@ wss.on('connection', async function connection(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 亮亮服务器 v7.5 已在端口 ${PORT} 启动`);
+  console.log(`🚀 亮亮服务器 v7.6 已在端口 ${PORT} 启动`);
 });

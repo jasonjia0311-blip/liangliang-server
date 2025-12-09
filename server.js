@@ -1,10 +1,10 @@
 /**
- * 亮亮 "大脑" 服务器 (Brain Server) v7.3 (音量侦测版)
+ * 亮亮 "大脑" 服务器 (Brain Server) v7.4 (深度诊断版)
  * 状态: 云端/本地通用版
- * 特性: 打印接收到的音量，帮助排查静音问题
+ * 特性: 显示用户语音识别内容 + AI 回复状态，切换至 gemini-2.0-flash-exp
  */
 
-console.log("🚀 正在启动亮亮服务器 (v7.3)...");
+console.log("🚀 正在启动亮亮服务器 (v7.4)...");
 
 import { GoogleGenAI } from "@google/genai";
 import { WebSocketServer } from 'ws';
@@ -64,11 +64,12 @@ wss.on('connection', async function connection(ws) {
     
     try {
       session = await ai.live.connect({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash-exp', // 切换到反应更快的 2.0 模型
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
           systemInstruction: SYSTEM_INSTRUCTION,
+          inputAudioTranscription: {}, // 开启用户语音转文字 (诊断用)
         },
         callbacks: {
           onopen: () => {
@@ -76,10 +77,20 @@ wss.on('connection', async function connection(ws) {
              isReconnecting = false;
           },
           onmessage: (msg) => {
+            // 1. 处理音频回复
             const base64Audio = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio) {
               const audioBuffer = Buffer.from(base64Audio, 'base64');
+              console.log(`🤖 AI 回复音频: ${audioBuffer.length} bytes`);
               ws.send(audioBuffer);
+            }
+
+            // 2. 处理文字识别 (诊断日志)
+            if (msg.serverContent?.inputTranscription) {
+                const text = msg.serverContent.inputTranscription.text;
+                if (text && msg.serverContent.turnComplete) {
+                    console.log(`🗣️ 用户说: "${text}"`);
+                }
             }
           },
           onerror: (err) => {
@@ -103,22 +114,19 @@ wss.on('connection', async function connection(ws) {
 
   ws.on('message', (data) => {
     // --- 音量侦测逻辑 ---
-    // 将二进制数据转为 16位 整数数组来计算音量
     if (data.length > 0) {
-        // 创建一个 Int16 视图
         const int16Data = new Int16Array(
             data.buffer.slice(data.byteOffset, data.byteOffset + data.length)
         );
         let sum = 0;
-        // 简单采样 (每10个点采一个)
         for (let i = 0; i < int16Data.length; i += 10) {
             sum += Math.abs(int16Data[i]);
         }
         const avg = sum / (int16Data.length / 10);
         
-        // 只有当音量够大时才打印，防止刷屏
+        // 音量日志
         if (avg > 100) {
-            console.log(`🎤 收到声音 (音量: ${Math.floor(avg)})`);
+            // console.log(`🎤 收到声音 (音量: ${Math.floor(avg)})`);
         }
     }
 
@@ -135,6 +143,5 @@ wss.on('connection', async function connection(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 亮亮服务器 v7.3 已在端口 ${PORT} 启动`);
+  console.log(`🚀 亮亮服务器 v7.4 已在端口 ${PORT} 启动`);
 });
-

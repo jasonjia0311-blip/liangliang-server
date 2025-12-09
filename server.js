@@ -1,10 +1,10 @@
 /**
- * 亮亮 "大脑" 服务器 (Brain Server) v7.4 (深度诊断版)
+ * 亮亮 "大脑" 服务器 (Brain Server) v7.5 (心跳版)
  * 状态: 云端/本地通用版
- * 特性: 显示用户语音识别内容 + AI 回复状态，切换至 gemini-2.0-flash-exp
+ * 特性: 增加心跳日志证明服务器存活，增加显眼的连接提示
  */
 
-console.log("🚀 正在启动亮亮服务器 (v7.4)...");
+console.log("🚀 正在启动亮亮服务器 (v7.5)...");
 
 import { GoogleGenAI } from "@google/genai";
 import { WebSocketServer } from 'ws';
@@ -30,6 +30,11 @@ const server = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
+// 心跳包日志 (防止用户以为卡死了)
+setInterval(() => {
+  console.log('❤️ [心跳] 服务器运行中... (等待亮亮连接)');
+}, 30000);
+
 let ai;
 try {
     ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
@@ -51,7 +56,7 @@ If the user says anything resembling "你好，亮亮" (Hello Liangliang) or cal
 `;
 
 wss.on('connection', async function connection(ws) {
-  console.log('>>> ESP32 设备已连接!');
+  console.log('\n>>> 🟢 ESP32 设备已连接! <<<\n');
   let session = null;
   
   const connectToGemini = async () => {
@@ -64,12 +69,12 @@ wss.on('connection', async function connection(ws) {
     
     try {
       session = await ai.live.connect({
-        model: 'gemini-2.0-flash-exp', // 切换到反应更快的 2.0 模型
+        model: 'gemini-2.0-flash-exp', 
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
           systemInstruction: SYSTEM_INSTRUCTION,
-          inputAudioTranscription: {}, // 开启用户语音转文字 (诊断用)
+          inputAudioTranscription: {}, 
         },
         callbacks: {
           onopen: () => {
@@ -85,7 +90,7 @@ wss.on('connection', async function connection(ws) {
               ws.send(audioBuffer);
             }
 
-            // 2. 处理文字识别 (诊断日志)
+            // 2. 处理文字识别
             if (msg.serverContent?.inputTranscription) {
                 const text = msg.serverContent.inputTranscription.text;
                 if (text && msg.serverContent.turnComplete) {
@@ -113,23 +118,6 @@ wss.on('connection', async function connection(ws) {
   await connectToGemini();
 
   ws.on('message', (data) => {
-    // --- 音量侦测逻辑 ---
-    if (data.length > 0) {
-        const int16Data = new Int16Array(
-            data.buffer.slice(data.byteOffset, data.byteOffset + data.length)
-        );
-        let sum = 0;
-        for (let i = 0; i < int16Data.length; i += 10) {
-            sum += Math.abs(int16Data[i]);
-        }
-        const avg = sum / (int16Data.length / 10);
-        
-        // 音量日志
-        if (avg > 100) {
-            // console.log(`🎤 收到声音 (音量: ${Math.floor(avg)})`);
-        }
-    }
-
     if (session && !isReconnecting) {
       try {
         session.sendRealtimeInput({
@@ -139,9 +127,9 @@ wss.on('connection', async function connection(ws) {
     }
   });
 
-  ws.on('close', () => console.log('<<< ESP32 断开'));
+  ws.on('close', () => console.log('<<< 🔴 ESP32 断开'));
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 亮亮服务器 v7.4 已在端口 ${PORT} 启动`);
+  console.log(`🚀 亮亮服务器 v7.5 已在端口 ${PORT} 启动`);
 });

@@ -1,10 +1,10 @@
 /**
- * 亮亮 "大脑" 服务器 (Brain Server) v7.2 (防崩溃版)
+ * 亮亮 "大脑" 服务器 (Brain Server) v7.3 (音量侦测版)
  * 状态: 云端/本地通用版
- * 特性: 增强错误捕获，防止 API Key 缺失导致闪退
+ * 特性: 打印接收到的音量，帮助排查静音问题
  */
 
-console.log("🚀 正在启动亮亮服务器...");
+console.log("🚀 正在启动亮亮服务器 (v7.3)...");
 
 import { GoogleGenAI } from "@google/genai";
 import { WebSocketServer } from 'ws';
@@ -16,15 +16,11 @@ dotenv.config();
 // 检查 API Key
 const apiKey = process.env.API_KEY;
 if (!apiKey) {
-    console.error("⚠️  严重警告: 未找到 API_KEY 环境变量!");
-    console.error("    如果是本地运行，请在 .env 文件中设置。");
-    console.error("    如果是 Render 部署，请在 Environment Variables 中添加 API_KEY。");
-    // 不退出，但后续连接会失败
+    console.error("⚠️  严重警告: 未找到 API_KEY!");
 } else {
-    console.log("✅ 检测到 API Key (长度: " + apiKey.length + ")");
+    console.log("✅ API Key 已就绪");
 }
 
-// 云平台会自动提供 PORT 环境变量
 const PORT = process.env.PORT || 8080;
 
 const server = createServer((req, res) => {
@@ -34,7 +30,6 @@ const server = createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
-// 安全初始化 AI
 let ai;
 try {
     ai = new GoogleGenAI({ apiKey: apiKey || "MISSING_KEY" });
@@ -107,6 +102,26 @@ wss.on('connection', async function connection(ws) {
   await connectToGemini();
 
   ws.on('message', (data) => {
+    // --- 音量侦测逻辑 ---
+    // 将二进制数据转为 16位 整数数组来计算音量
+    if (data.length > 0) {
+        // 创建一个 Int16 视图
+        const int16Data = new Int16Array(
+            data.buffer.slice(data.byteOffset, data.byteOffset + data.length)
+        );
+        let sum = 0;
+        // 简单采样 (每10个点采一个)
+        for (let i = 0; i < int16Data.length; i += 10) {
+            sum += Math.abs(int16Data[i]);
+        }
+        const avg = sum / (int16Data.length / 10);
+        
+        // 只有当音量够大时才打印，防止刷屏
+        if (avg > 100) {
+            console.log(`🎤 收到声音 (音量: ${Math.floor(avg)})`);
+        }
+    }
+
     if (session && !isReconnecting) {
       try {
         session.sendRealtimeInput({
@@ -120,5 +135,6 @@ wss.on('connection', async function connection(ws) {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 亮亮服务器 v7.2 已在端口 ${PORT} 启动`);
+  console.log(`🚀 亮亮服务器 v7.3 已在端口 ${PORT} 启动`);
 });
+
